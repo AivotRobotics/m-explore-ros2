@@ -69,7 +69,9 @@ Explore::Explore()
   this->declare_parameter<float>("gain_scale", 1.0);
   this->declare_parameter<float>("min_frontier_size", 0.5);
   this->declare_parameter<bool>("return_to_init", false);
+  this->declare_parameter<bool>("auto_start", true);
 
+  bool auto_start = true;
   this->get_parameter("planner_frequency", planner_frequency_);
   this->get_parameter("progress_timeout", timeout);
   this->get_parameter("visualize", visualize_);
@@ -79,6 +81,7 @@ Explore::Explore()
   this->get_parameter("min_frontier_size", min_frontier_size);
   this->get_parameter("return_to_init", return_to_init_);
   this->get_parameter("robot_base_frame", robot_base_frame_);
+  this->get_parameter("auto_start", auto_start);
 
   progress_timeout_ = timeout;
   move_base_client_ =
@@ -108,10 +111,9 @@ Explore::Explore()
 
   if (return_to_init_) {
     RCLCPP_INFO(logger_, "Getting initial pose of the robot");
-    geometry_msgs::msg::TransformStamped transformStamped;
-    std::string map_frame = costmap_client_.getGlobalFrameID();
+    const std::string map_frame = costmap_client_.getGlobalFrameID();
     try {
-      transformStamped = tf_buffer_.lookupTransform(
+      const auto transformStamped = tf_buffer_.lookupTransform(
           map_frame, robot_base_frame_, tf2::TimePointZero);
       initial_pose_.position.x = transformStamped.transform.translation.x;
       initial_pose_.position.y = transformStamped.transform.translation.y;
@@ -124,10 +126,16 @@ Explore::Explore()
   }
 
   exploring_timer_ = this->create_wall_timer(
-      std::chrono::milliseconds((uint16_t)(1000.0 / planner_frequency_)),
+      std::chrono::milliseconds(static_cast<uint16_t>(1000.0 / planner_frequency_)),
       [this]() { makePlan(); });
-  // Start exploration right away
-  makePlan();
+  if (auto_start) {
+    // Start exploration right away
+    makePlan();
+  } else {
+    // Cancel timer if not requested to auto start
+    exploring_timer_->cancel();
+    RCLCPP_INFO(logger_, "Auto start disabled, waiting for resume request to start exploration");
+  }
 }
 
 Explore::~Explore()
