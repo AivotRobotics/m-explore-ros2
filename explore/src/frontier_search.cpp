@@ -14,11 +14,12 @@ using nav2_costmap_2d::NO_INFORMATION;
 
 FrontierSearch::FrontierSearch(nav2_costmap_2d::Costmap2D* costmap,
                                double potential_scale, double gain_scale,
-                               double min_frontier_size)
+                               double min_frontier_size, double max_frontier_size)
   : costmap_(costmap)
   , potential_scale_(potential_scale)
   , gain_scale_(gain_scale)
   , min_frontier_size_(min_frontier_size)
+  , max_frontier_size_(max_frontier_size)
 {
 }
 
@@ -124,7 +125,14 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
   costmap_->indexToCells(reference, rx, ry);
   costmap_->mapToWorld(rx, ry, reference_x, reference_y);
 
-  while (!bfs.empty()) {
+  bool frontier_completed = false;
+  while (!frontier_completed) {
+    // if no more cells to check than we are done building a frontier
+    if (bfs.empty()) {
+      frontier_completed = true;
+      continue;
+    }
+
     unsigned int idx = bfs.front();
     bfs.pop();
 
@@ -159,6 +167,12 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
           output.min_distance = distance;
           output.middle.x = wx;
           output.middle.y = wy;
+        }
+
+        // if max frontier size is set and the frontier exceeds it then stop iterating over cells
+        if (max_frontier_size_ > 0.0 && output.size * costmap_->getResolution() >= max_frontier_size_) {
+          frontier_completed = true;
+          break;
         }
 
         // add to queue for breadth first search
