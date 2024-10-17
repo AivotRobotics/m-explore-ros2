@@ -91,7 +91,7 @@ Explore::Explore()
           this, ACTION_NAME);
 
   search_ = frontier_exploration::FrontierSearch(costmap_client_.getCostmap(),
-                                                 potential_scale_, gain_scale_,
+                                                 potential_scale_, gain_scale_, orientation_scale_,
                                                  min_frontier_size, max_frontier_size);
 
   if (visualize_) {
@@ -172,6 +172,11 @@ void Explore::visualizeFrontiers(
   green.g = 1.0;
   green.b = 0;
   green.a = 1.0;
+  std_msgs::msg::ColorRGBA yellow;
+  yellow.r = 1.0;
+  yellow.g = 1.0;
+  yellow.b = 0;
+  yellow.a = 1.0;
 
   RCLCPP_DEBUG(logger_, "visualising %lu frontiers", frontiers.size());
   visualization_msgs::msg::MarkerArray markers_msg;
@@ -202,6 +207,7 @@ void Explore::visualizeFrontiers(
 
   // weighted frontiers are always sorted
   double min_cost = frontiers.empty() ? 0. : frontiers.front().cost;
+  const tf2::Vector3 arrow_dims { 0.50, 0.10, 0.10 };
 
   m.action = visualization_msgs::msg::Marker::ADD;
   size_t id = 0;
@@ -232,6 +238,15 @@ void Explore::visualizeFrontiers(
     m.color = green;
     markers.push_back(m);
     ++id;
+    m.type = visualization_msgs::msg::Marker::ARROW;
+    m.id = static_cast<int>(id);
+    m.pose.position = frontier.centroid;
+    m.pose.orientation = frontier.orientation;
+    m.scale = tf2::toMsg(arrow_dims);
+    m.points = {};
+    m.color = yellow;
+    markers.push_back(m);
+    ++id;
   }
   size_t current_markers_count = markers.size();
 
@@ -251,7 +266,7 @@ void Explore::makePlan()
   // find frontiers
   auto pose = costmap_client_.getRobotPose();
   // get frontiers sorted according to cost
-  auto frontiers = search_.searchFrom(pose.position);
+  auto frontiers = search_.searchFrom(pose);
   RCLCPP_DEBUG(logger_, "found %lu frontiers", frontiers.size());
   for (size_t i = 0; i < frontiers.size(); ++i) {
     RCLCPP_DEBUG(logger_, "frontier %zd cost: %f", i, frontiers[i].cost);
@@ -314,7 +329,7 @@ void Explore::makePlan()
   // send goal to move_base if we have something new to pursue
   auto goal = nav2_msgs::action::NavigateToPose::Goal();
   goal.pose.pose.position = target_position;
-  goal.pose.pose.orientation.w = 1.;
+  goal.pose.pose.orientation = frontier->orientation;
   goal.pose.header.frame_id = costmap_client_.getGlobalFrameID();
   goal.pose.header.stamp = this->now();
 

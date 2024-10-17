@@ -13,27 +13,27 @@ using nav2_costmap_2d::LETHAL_OBSTACLE;
 using nav2_costmap_2d::NO_INFORMATION;
 
 FrontierSearch::FrontierSearch(nav2_costmap_2d::Costmap2D* costmap,
-                               double potential_scale, double gain_scale,
+                               double potential_scale, double gain_scale, double orientation_scale,
                                double min_frontier_size, double max_frontier_size)
-  : costmap_(costmap)
+  : logger_(rclcpp::get_logger(__func__))
+  , costmap_(costmap)
   , potential_scale_(potential_scale)
   , gain_scale_(gain_scale)
+  , orientation_scale_(orientation_scale)
   , min_frontier_size_(min_frontier_size)
   , max_frontier_size_(max_frontier_size)
 {
 }
 
 std::vector<Frontier>
-FrontierSearch::searchFrom(geometry_msgs::msg::Point position)
+FrontierSearch::searchFrom(const geometry_msgs::msg::Pose& pose)
 {
   std::vector<Frontier> frontier_list;
 
   // Sanity check that robot is inside costmap bounds before searching
   unsigned int mx, my;
-  if (!costmap_->worldToMap(position.x, position.y, mx, my)) {
-    RCLCPP_ERROR(rclcpp::get_logger("FrontierSearch"), "Robot out of costmap "
-                                                       "bounds, cannot search "
-                                                       "for frontiers");
+  if (!costmap_->worldToMap(pose.position.x, pose.position.y, mx, my)) {
+    RCLCPP_ERROR(logger_, "Robot out of costmap bounds, cannot search for frontiers");
     return frontier_list;
   }
 
@@ -58,9 +58,7 @@ FrontierSearch::searchFrom(geometry_msgs::msg::Point position)
     bfs.push(clear);
   } else {
     bfs.push(pos);
-    RCLCPP_WARN(rclcpp::get_logger("FrontierSearch"), "Could not find nearby "
-                                                      "clear cell to start "
-                                                      "search");
+    RCLCPP_WARN(logger_, "Could not find nearby clear cell to start search");
   }
   visited_flag[bfs.front()] = true;
 
@@ -79,19 +77,16 @@ FrontierSearch::searchFrom(geometry_msgs::msg::Point position)
         // neighbour)
       } else if (isNewFrontierCell(nbr, frontier_flag)) {
         frontier_flag[nbr] = true;
-        Frontier new_frontier = buildNewFrontier(nbr, pos, frontier_flag);
-        if (new_frontier.size * costmap_->getResolution() >=
-            min_frontier_size_) {
+        Frontier new_frontier = buildNewFrontier(nbr, pose, frontier_flag);
+        if (new_frontier.size * costmap_->getResolution() >= min_frontier_size_) {
+
+          new_frontier.cost = frontierCost(new_frontier);
           frontier_list.push_back(new_frontier);
         }
       }
     }
   }
 
-  // set costs of frontiers
-  for (auto& frontier : frontier_list) {
-    frontier.cost = frontierCost(frontier);
-  }
   std::sort(
       frontier_list.begin(), frontier_list.end(),
       [](const Frontier& f1, const Frontier& f2) { return f1.cost < f2.cost; });
@@ -100,7 +95,7 @@ FrontierSearch::searchFrom(geometry_msgs::msg::Point position)
 }
 
 Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
-                                          unsigned int reference,
+                                          const geometry_msgs::msg::Pose& reference_pose,
                                           std::vector<bool>& frontier_flag)
 {
   // initialize frontier structure
@@ -118,12 +113,6 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
   // push initial gridcell onto queue
   std::queue<unsigned int> bfs;
   bfs.push(initial_cell);
-
-  // cache reference position in world coords
-  unsigned int rx, ry;
-  double reference_x, reference_y;
-  costmap_->indexToCells(reference, rx, ry);
-  costmap_->mapToWorld(rx, ry, reference_x, reference_y);
 
   bool frontier_completed = false;
   while (!frontier_completed) {
@@ -159,10 +148,9 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
         output.centroid.x += wx;
         output.centroid.y += wy;
 
-        // determine frontier's distance from robot, going by closest gridcell
-        // to robot
-        double distance = sqrt(pow((double(reference_x) - double(wx)), 2.0) +
-                               pow((double(reference_y) - double(wy)), 2.0));
+        // determine frontier's distance from robot
+        const auto distance = std::sqrt(
+          std::pow(reference_pose.position.x - wx, 2.0) + std::pow(reference_pose.position.y - wy, 2.0));
         if (distance < output.min_distance) {
           output.min_distance = distance;
           output.middle.x = wx;
@@ -184,6 +172,22 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
   // average out frontier centroid
   output.centroid.x /= output.size;
   output.centroid.y /= output.size;
+
+  // update frontier orientation relative to current robot position
+  const auto front_rx = output.middle.x - reference_pose.position.x;
+  const auto front_ry = output.middle.y - reference_pose.position.y;
+
+  // angle = atan2(a2*b1 - a1*b2, a1*b1 - a2*b2), where b = X_AXIS = (1, 0)
+  double yaw = std::atan2(front_ry, front_rx);
+  output.orientation = toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), yaw));
+
+  // calc angular distance by simply taking the difference between robot's yaw and frontier's yaw
+  tf2::Quaternion quat;
+  tf2::fromMsg(reference_pose.orientation, quat);
+  double ref_roll, ref_pitch, ref_yaw;
+  tf2::Matrix3x3(quat).getRPY(ref_roll, ref_pitch, ref_yaw);
+  output.angular_distance = std::abs(ref_yaw - yaw);
+
   return output;
 }
 
@@ -206,10 +210,10 @@ bool FrontierSearch::isNewFrontierCell(unsigned int idx,
   return false;
 }
 
-double FrontierSearch::frontierCost(const Frontier& frontier)
-{
-  return (potential_scale_ * frontier.min_distance *
-          costmap_->getResolution()) -
-         (gain_scale_ * frontier.size * costmap_->getResolution());
+double FrontierSearch::frontierCost(const Frontier& frontier) const {
+  const auto position = potential_scale_ * frontier.min_distance * costmap_->getResolution();
+  const auto gain = gain_scale_ * frontier.size * costmap_->getResolution();
+  const auto orientation = orientation_scale_ * frontier.angular_distance;
+  return orientation - position - gain;
 }
 }  // namespace frontier_exploration
