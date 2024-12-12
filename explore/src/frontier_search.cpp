@@ -178,15 +178,14 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
   const auto front_ry = output.middle.y - reference_pose.position.y;
 
   // angle = atan2(a2*b1 - a1*b2, a1*b1 - a2*b2), where b = X_AXIS = (1, 0)
-  double yaw = std::atan2(front_ry, front_rx);
-  output.orientation = toMsg(tf2::Quaternion(tf2::Vector3(0, 0, 1), yaw));
+  const double yaw = std::atan2(front_ry, front_rx);
+  const tf2::Quaternion orient_out { { 0, 0, 1 }, yaw };
+  output.orientation = toMsg(orient_out);
 
-  // calc angular distance by simply taking the difference between robot's yaw and frontier's yaw
-  tf2::Quaternion quat;
-  tf2::fromMsg(reference_pose.orientation, quat);
-  double ref_roll, ref_pitch, ref_yaw;
-  tf2::Matrix3x3(quat).getRPY(ref_roll, ref_pitch, ref_yaw);
-  output.angular_distance = std::abs(ref_yaw - yaw);
+  // calc angular distance
+  tf2::Quaternion orient_curr;
+  tf2::fromMsg(reference_pose.orientation, orient_curr);
+  output.angular_distance = std::abs(orient_curr.angleShortestPath(orient_out));
 
   return output;
 }
