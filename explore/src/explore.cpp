@@ -208,49 +208,45 @@ void Explore::visualizeFrontiers(
   m.frame_locked = true;
 
   // weighted frontiers are always sorted
-  double min_cost = frontiers.empty() ? 0. : frontiers.front().cost;
+  const double min_cost = frontiers.empty() ? 0. : frontiers.front().cost;
   const tf2::Vector3 arrow_dims { 0.50, 0.10, 0.10 };
 
   m.action = visualization_msgs::msg::Marker::ADD;
   size_t id = 0;
   for (auto& frontier : frontiers) {
     m.type = visualization_msgs::msg::Marker::POINTS;
-    m.id = int(id);
-    // m.pose.position = {}; // compile warning
+    m.id = static_cast<int>(id++);
+    m.pose = geometry_msgs::msg::Pose();
     m.scale.x = 0.1;
     m.scale.y = 0.1;
     m.scale.z = 0.1;
     m.points = frontier.points;
-    if (goalOnBlacklist(frontier.centroid)) {
-      m.color = red;
-    } else {
-      m.color = blue;
-    }
+    m.color = goalOnBlacklist(frontier.centroid) ? red : blue;
     markers.push_back(m);
-    ++id;
+
     m.type = visualization_msgs::msg::Marker::SPHERE;
-    m.id = int(id);
+    m.id = static_cast<int>(id++);
     m.pose.position = frontier.initial;
     // scale frontier according to its cost (costier frontiers will be smaller)
-    double scale = std::min(std::abs(min_cost * 0.4 / frontier.cost), 0.5);
+    const auto scale = std::min(std::abs(min_cost * 0.4 / frontier.cost), 0.5);
     m.scale.x = scale;
     m.scale.y = scale;
     m.scale.z = scale;
     m.points = {};
     m.color = green;
     markers.push_back(m);
-    ++id;
+
     m.type = visualization_msgs::msg::Marker::ARROW;
-    m.id = static_cast<int>(id);
+    m.id = static_cast<int>(id++);
     m.pose.position = frontier.centroid;
     m.pose.orientation = frontier.orientation;
     m.scale = tf2::toMsg(arrow_dims);
     m.points = {};
     m.color = yellow;
     markers.push_back(m);
-    ++id;
+
   }
-  size_t current_markers_count = markers.size();
+  const size_t current_markers_count = markers.size();
 
   // delete previous markers, which are now unused
   m.action = visualization_msgs::msg::Marker::DELETE;
