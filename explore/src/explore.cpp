@@ -65,12 +65,13 @@ Explore::Explore()
   this->declare_parameter<float>("progress_timeout", 30.0);
   this->declare_parameter<bool>("visualize", false);
   this->declare_parameter<float>("potential_scale", 1e-3);
-  this->declare_parameter<float>("orientation_scale", 0.0);
+  this->declare_parameter<float>("orientation_scale", 1e-3);
   this->declare_parameter<float>("gain_scale", 1.0);
   this->declare_parameter<float>("min_frontier_size", 0.5);
   this->declare_parameter<float>("max_frontier_size", 0.0);
   this->declare_parameter<bool>("return_to_init", false);
   this->declare_parameter<bool>("auto_start", true);
+  this->declare_parameter<float>("stopline_offset", 0.0);
 
   bool auto_start = true;
   this->get_parameter("planner_frequency", planner_frequency_);
@@ -84,6 +85,7 @@ Explore::Explore()
   this->get_parameter("return_to_init", return_to_init_);
   this->get_parameter("robot_base_frame", robot_base_frame_);
   this->get_parameter("auto_start", auto_start);
+  this->get_parameter("stopline_offset", stopline_offset_);
 
   progress_timeout_ = timeout;
   move_base_client_ =
@@ -339,9 +341,18 @@ void Explore::makePlan(bool use_new_map/*= true*/)
 
   RCLCPP_DEBUG(logger_, "Sending goal to move base nav2");
 
+  tf2::Quaternion orientation;
+  tf2::fromMsg(frontier->orientation, orientation);
+  tf2::Vector3 centroid;
+  tf2::fromMsg(frontier->centroid, centroid);
+
+  // calc the stop line offset from the frontier centroid
+  const auto stopline_offset = tf2::quatRotate(orientation,
+    (tf2::Vector3 {1, 0, 0} ) * stopline_offset_);
+
   // send goal to move_base if we have something new to pursue
   auto goal = nav2_msgs::action::NavigateToPose::Goal();
-  goal.pose.pose.position = target_position;
+  goal.pose.pose.position = tf2::toMsg(centroid + stopline_offset, goal.pose.pose.position);
   goal.pose.pose.orientation = frontier->orientation;
   goal.pose.header.frame_id = costmap_client_.getGlobalFrameID();
   goal.pose.header.stamp = this->now();
