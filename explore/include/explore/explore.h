@@ -40,21 +40,13 @@
 
 #include <explore/costmap_client.h>
 #include <explore/frontier_search.h>
-#include <geometry_msgs/msg/pose_stamped.h>
 #include <tf2_ros/transform_listener.h>
-
-#include <chrono>
-#include <cmath>
-#include <geometry_msgs/msg/point.hpp>
 #include <memory>
-#include <mutex>
 #include <rclcpp/rclcpp.hpp>
 #include <std_msgs/msg/bool.hpp>
-#include <std_msgs/msg/color_rgba.hpp>
 #include <string>
 #include <vector>
 #include <visualization_msgs/msg/marker_array.hpp>
-
 #include "nav2_msgs/action/navigate_to_pose.hpp"
 #include "rclcpp_action/rclcpp_action.hpp"
 
@@ -89,8 +81,9 @@ public:
 private:
   /**
    * @brief  Make a global plan
+   * @param use_new_map -a new plan must be made only if the map got updated since the last plan made
    */
-  void makePlan();
+  void makePlan(bool use_new_map = true);
 
   // /**
   //  * @brief  Publish a frontiers as markers
@@ -128,6 +121,7 @@ private:
   double prev_distance_;
   rclcpp::Time last_progress_;
   size_t last_markers_count_;
+  rclcpp::Time last_make_plan_time_ = rclcpp::Time(0l, RCL_ROS_TIME);
 
   geometry_msgs::msg::Pose initial_pose_;
   void returnToInitialPose(void);

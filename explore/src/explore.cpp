@@ -261,15 +261,24 @@ void Explore::visualizeFrontiers(
   marker_array_publisher_->publish(markers_msg);
 }
 
-void Explore::makePlan()
+void Explore::makePlan(bool use_new_map/*= true*/)
 {
+  const bool has_map_updated = last_make_plan_time_.seconds() == 0 || costmap_client_.getTimestamp() > last_make_plan_time_;
+  // if there is updated map and request is to plan only of there is one then skip this round
+  if (use_new_map && !has_map_updated) {
+    RCLCPP_DEBUG(logger_, "No new costmap available, stay on the current frontier");
+    return;
+  }
+
   // find frontiers
-  auto pose = costmap_client_.getRobotPose();
+  const auto pose = costmap_client_.getRobotPose();
+
   // get frontiers sorted according to cost
   auto frontiers = search_.searchFrom(pose);
   RCLCPP_DEBUG(logger_, "found %lu frontiers", frontiers.size());
   for (size_t i = 0; i < frontiers.size(); ++i) {
-    RCLCPP_DEBUG(logger_, "frontier %zd cost: %f", i, frontiers[i].cost);
+    RCLCPP_DEBUG(logger_, "frontier %zd cost: %f, distance: %.3f, angular: %.3f, size: %d, centroid: [%.2f, %.2f]",
+      i, frontiers[i].cost, frontiers[i].min_distance, frontiers[i].angular_distance, frontiers[i].size, frontiers[i].centroid.x, frontiers[i].centroid.y);
   }
 
   if (frontiers.empty()) {
@@ -284,7 +293,7 @@ void Explore::makePlan()
   }
 
   // find non blacklisted frontier
-  auto frontier =
+  const auto frontier =
       std::find_if_not(frontiers.begin(), frontiers.end(),
                        [this](const frontier_exploration::Frontier& f) {
                          return goalOnBlacklist(f.centroid);
@@ -297,7 +306,7 @@ void Explore::makePlan()
   geometry_msgs::msg::Point target_position = frontier->centroid;
 
   // time out if we are not making any progress
-  bool same_goal = same_point(prev_goal_, target_position);
+  const bool same_goal = same_point(prev_goal_, target_position);
 
   prev_goal_ = target_position;
   if (!same_goal || prev_distance_ > frontier->min_distance) {
@@ -319,10 +328,14 @@ void Explore::makePlan()
     resuming_ = false;
   }
 
-  // we don't need to do anything if we still pursuing the same goal
+  // we don't need to do anything if we are still pursuing the same goal
   if (same_goal) {
+    RCLCPP_DEBUG(logger_, "The current frontier is still the best to explore");
     return;
   }
+
+  // we got a new frontier to explore, record
+  last_make_plan_time_ = get_clock()->now();
 
   RCLCPP_DEBUG(logger_, "Sending goal to move base nav2");
 
@@ -410,7 +423,7 @@ void Explore::reachedGoal(const NavigationGoalHandle::WrappedResult& result,
 
   // Because of the 1-thread-executor nature of ros2 I think timer is not
   // needed.
-  makePlan();
+  makePlan(false);
 }
 
 void Explore::start()
@@ -421,6 +434,7 @@ void Explore::start()
 void Explore::stop(bool finished_exploring)
 {
   RCLCPP_INFO(logger_, "Exploration stopped.");
+  last_make_plan_time_ = rclcpp::Time(0);
   move_base_client_->async_cancel_all_goals();
   exploring_timer_->cancel();
 

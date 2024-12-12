@@ -39,10 +39,8 @@
 #define COSTMAP_CLIENT_
 
 #include <tf2_ros/buffer.h>
-#include <tf2_ros/transform_listener.h>
 
 #include <geometry_msgs/msg/pose.hpp>
-#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <map_msgs/msg/occupancy_grid_update.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 #include <rclcpp/rclcpp.hpp>
@@ -110,11 +108,18 @@ public:
     return robot_base_frame_;
   }
 
+  const rclcpp::Time& getTimestamp()
+  {
+    return costmap_stamp_;
+  }
+
 protected:
   void updateFullMap(const nav_msgs::msg::OccupancyGrid::SharedPtr msg);
   void updatePartialMap(const map_msgs::msg::OccupancyGridUpdate::SharedPtr msg);
 
   nav2_costmap_2d::Costmap2D costmap_;
+  rclcpp::Time costmap_stamp_;
+
   bool costmap_received_ = false;  ///< @brief Flag indicating whether costmap
                                    ///< callback has been called
 

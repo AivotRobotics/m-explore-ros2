@@ -160,6 +160,9 @@ void Costmap2DClient::updateFullMap(
   auto* mutex = costmap_.getMutex();
   std::lock_guard<nav2_costmap_2d::Costmap2D::mutex_t> lock(*mutex);
 
+  // save costmap stamp
+  costmap_stamp_ = msg->header.stamp;
+
   // fill map with data
   unsigned char* costmap_data = costmap_.getCharMap();
   size_t costmap_size = costmap_.getSizeInCellsX() * costmap_.getSizeInCellsY();
@@ -193,6 +196,9 @@ void Costmap2DClient::updatePartialMap(
   // lock as we are accessing raw underlying map
   auto* mutex = costmap_.getMutex();
   std::lock_guard<nav2_costmap_2d::Costmap2D::mutex_t> lock(*mutex);
+
+  // save costmap stamp
+  costmap_stamp_ = msg->header.stamp;
 
   size_t costmap_xn = costmap_.getSizeInCellsX();
   size_t costmap_yn = costmap_.getSizeInCellsY();
