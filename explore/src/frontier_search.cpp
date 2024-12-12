@@ -214,6 +214,7 @@ double FrontierSearch::frontierCost(const Frontier& frontier) const {
   const auto position = potential_scale_ * frontier.min_distance * costmap_->getResolution();
   const auto gain = gain_scale_ * frontier.size * costmap_->getResolution();
   const auto orientation = orientation_scale_ * frontier.angular_distance;
-  return orientation - position - gain;
+
+  return orientation + position - gain;
 }
 }  // namespace frontier_exploration
