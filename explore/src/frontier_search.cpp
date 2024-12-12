@@ -173,6 +173,11 @@ Frontier FrontierSearch::buildNewFrontier(unsigned int initial_cell,
   output.centroid.x /= output.size;
   output.centroid.y /= output.size;
 
+  // we want to use middle point as frontier goal
+  // make it this way but need to replace centroid usage
+  // across the codebase
+  output.centroid = output.middle;
+
   // update frontier orientation relative to current robot position
   const auto front_rx = output.middle.x - reference_pose.position.x;
   const auto front_ry = output.middle.y - reference_pose.position.y;
