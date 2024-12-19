@@ -454,6 +454,8 @@ void Explore::resume()
 {
   resuming_ = true;
   RCLCPP_INFO(logger_, "Exploration resuming.");
+  // clear previously blacklisted frontiers
+  frontier_blacklist_.clear();
   // Reactivate the timer
   exploring_timer_->reset();
   // Resume immediately
